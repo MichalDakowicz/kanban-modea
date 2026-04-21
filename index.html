@@ -1,0 +1,278 @@
+<!DOCTYPE html>
+<html lang="pl">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Kanban — logowanie</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=DM+Sans:wght@300;400;500&display=swap" rel="stylesheet">
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  :root {
+    --bg:       #0f0f0f;
+    --surface:  #1a1a1a;
+    --border:   #2a2a2a;
+    --border-h: #3a3a3a;
+    --text:     #e8e8e8;
+    --muted:    #666;
+    --accent:   #c8f542;
+    --accent-d: #a8d42a;
+    --danger:   #ff5555;
+    --r:        8px;
+  }
+
+  body {
+    font-family: 'DM Sans', sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    min-height: 100vh;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 24px;
+  }
+
+  .card {
+    width: 100%;
+    max-width: 400px;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 16px;
+    padding: 40px 36px;
+  }
+
+  .logo {
+    font-family: 'DM Mono', monospace;
+    font-size: 13px;
+    color: var(--accent);
+    letter-spacing: .1em;
+    text-transform: uppercase;
+    margin-bottom: 32px;
+  }
+
+  h1 {
+    font-size: 22px;
+    font-weight: 500;
+    margin-bottom: 6px;
+  }
+
+  .sub {
+    font-size: 14px;
+    color: var(--muted);
+    margin-bottom: 32px;
+    line-height: 1.5;
+  }
+
+  label {
+    display: block;
+    font-size: 12px;
+    font-weight: 500;
+    color: var(--muted);
+    text-transform: uppercase;
+    letter-spacing: .06em;
+    margin-bottom: 8px;
+  }
+
+  input[type="password"] {
+    width: 100%;
+    background: var(--bg);
+    border: 1px solid var(--border);
+    border-radius: var(--r);
+    color: var(--text);
+    font-family: 'DM Mono', monospace;
+    font-size: 15px;
+    padding: 12px 14px;
+    outline: none;
+    transition: border-color .15s;
+    letter-spacing: .1em;
+  }
+  input[type="password"]:focus { border-color: var(--accent); }
+  input[type="password"].error { border-color: var(--danger); }
+
+  .error-msg {
+    font-size: 12px;
+    color: var(--danger);
+    margin-top: 6px;
+    min-height: 16px;
+  }
+
+  .divider {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    margin: 24px 0;
+    color: var(--muted);
+    font-size: 12px;
+  }
+  .divider::before, .divider::after {
+    content: '';
+    flex: 1;
+    height: 1px;
+    background: var(--border);
+  }
+
+  .users-label {
+    font-size: 12px;
+    font-weight: 500;
+    color: var(--muted);
+    text-transform: uppercase;
+    letter-spacing: .06em;
+    margin-bottom: 12px;
+  }
+
+  .users {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 8px;
+    margin-bottom: 28px;
+  }
+
+  .user-btn {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    background: var(--bg);
+    border: 1px solid var(--border);
+    border-radius: var(--r);
+    padding: 10px 12px;
+    color: var(--text);
+    font-family: 'DM Sans', sans-serif;
+    font-size: 14px;
+    cursor: pointer;
+    transition: border-color .15s, background .15s;
+    text-align: left;
+  }
+  .user-btn:hover { border-color: var(--border-h); background: #222; }
+  .user-btn.selected {
+    border-color: var(--accent);
+    background: rgba(200, 245, 66, .06);
+    color: var(--accent);
+  }
+
+  .avatar {
+    width: 28px;
+    height: 28px;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 11px;
+    font-weight: 500;
+    flex-shrink: 0;
+    opacity: .85;
+  }
+
+  .btn-submit {
+    width: 100%;
+    background: var(--accent);
+    color: #0f0f0f;
+    border: none;
+    border-radius: var(--r);
+    font-family: 'DM Sans', sans-serif;
+    font-size: 15px;
+    font-weight: 500;
+    padding: 13px;
+    cursor: pointer;
+    transition: background .15s, transform .1s;
+  }
+  .btn-submit:hover { background: var(--accent-d); }
+  .btn-submit:active { transform: scale(.98); }
+  .btn-submit:disabled { opacity: .4; cursor: not-allowed; transform: none; }
+
+  .step { display: none; }
+  .step.active { display: block; }
+
+  @keyframes shake {
+    0%,100% { transform: translateX(0); }
+    20%,60%  { transform: translateX(-6px); }
+    40%,80%  { transform: translateX(6px); }
+  }
+  .shake { animation: shake .35s ease; }
+</style>
+</head>
+<body>
+<script src="config.js"></script>
+
+<div class="card">
+  <div class="logo">Modéa Kanban</div>
+
+  <div id="step-password" class="step active">
+    <h1>Witaj z powrotem</h1>
+    <p class="sub">Wpisz hasło zespołu żeby wejść do boardu.</p>
+
+    <label for="pwd">Hasło</label>
+    <input type="password" id="pwd" placeholder="••••••••" autocomplete="current-password">
+    <div class="error-msg" id="pwd-error"></div>
+
+    <br>
+    <button class="btn-submit" id="btn-pwd">Dalej →</button>
+  </div>
+
+  <div id="step-user" class="step">
+    <h1>Kim jesteś?</h1>
+    <p class="sub">Wybierz swój profil — zapisze się w przeglądarce.</p>
+
+    <div class="users-label">Członkowie zespołu</div>
+    <div class="users" id="users-grid"></div>
+
+    <button class="btn-submit" id="btn-user" disabled>Wejdź do boardu →</button>
+  </div>
+</div>
+
+<script>
+  const stored = localStorage.getItem('kb_user');
+  if (stored) {
+    window.location.href = 'app.html';
+  }
+
+  const grid = document.getElementById('users-grid');
+  let selectedUser = null;
+
+  TEAM_MEMBERS.forEach(u => {
+    const btn = document.createElement('button');
+    btn.className = 'user-btn';
+    btn.dataset.id = u.id;
+    btn.innerHTML = `
+      <div class="avatar" style="background:${u.color}22;color:${u.color}">${u.initials}</div>
+      <span>${u.name}</span>
+    `;
+    btn.addEventListener('click', () => {
+      document.querySelectorAll('.user-btn').forEach(b => b.classList.remove('selected'));
+      btn.classList.add('selected');
+      selectedUser = u;
+      document.getElementById('btn-user').disabled = false;
+    });
+    grid.appendChild(btn);
+  });
+
+  const pwdInput = document.getElementById('pwd');
+  const pwdError = document.getElementById('pwd-error');
+  const btnPwd   = document.getElementById('btn-pwd');
+
+  function checkPassword() {
+    if (pwdInput.value === APP_PASSWORD) {
+      document.getElementById('step-password').classList.remove('active');
+      document.getElementById('step-user').classList.add('active');
+    } else {
+      pwdError.textContent = 'Nieprawidłowe hasło. Spróbuj ponownie.';
+      pwdInput.classList.add('error', 'shake');
+      setTimeout(() => pwdInput.classList.remove('shake'), 400);
+    }
+  }
+
+  btnPwd.addEventListener('click', checkPassword);
+  pwdInput.addEventListener('keydown', e => { if (e.key === 'Enter') checkPassword(); });
+  pwdInput.addEventListener('input', () => {
+    pwdInput.classList.remove('error');
+    pwdError.textContent = '';
+  });
+
+  document.getElementById('btn-user').addEventListener('click', () => {
+    if (!selectedUser) return;
+    localStorage.setItem('kb_user', JSON.stringify(selectedUser));
+    window.location.href = 'app.html';
+  });
+</script>
+</body>
+</html>

@@ -1,0 +1,1166 @@
+<!DOCTYPE html>
+<html lang="pl">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Kanban — board</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=DM+Sans:wght@300;400;500&display=swap" rel="stylesheet">
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  :root {
+    --bg:       #0f0f0f;
+    --surface:  #161616;
+    --card:     #1c1c1c;
+    --border:   #272727;
+    --border-h: #3a3a3a;
+    --text:     #e8e8e8;
+    --muted:    #555;
+    --hint:     #3a3a3a;
+    --accent:   #c8f542;
+    --accent-d: #a8d42a;
+    --blue:     #378ADD;
+    --r:        8px;
+  }
+
+  body {
+    font-family: 'DM Sans', sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    height: 100vh;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+  }
+
+  /* TOPBAR */
+  .topbar {
+    display: flex;
+    align-items: center;
+    gap: 0;
+    padding: 0 16px;
+    height: 52px;
+    border-bottom: 1px solid var(--border);
+    background: var(--surface);
+    flex-shrink: 0;
+  }
+  .logo {
+    font-family: 'DM Mono', monospace;
+    font-size: 12px;
+    color: var(--accent);
+    letter-spacing: .08em;
+    margin-right: 24px;
+    white-space: nowrap;
+  }
+
+  .tabs { display: flex; gap: 2px; flex: 1; overflow-x: auto; }
+  .tab {
+    padding: 6px 14px;
+    font-size: 13px;
+    border-radius: 6px;
+    border: none;
+    background: transparent;
+    color: var(--muted);
+    cursor: pointer;
+    white-space: nowrap;
+    transition: color .15s, background .15s;
+    font-family: 'DM Sans', sans-serif;
+  }
+  .tab:hover { color: var(--text); background: #222; }
+  .tab.active { background: #252525; color: var(--text); font-weight: 500; }
+  .tab-add {
+    color: var(--muted);
+    font-size: 18px;
+    padding: 4px 10px;
+    line-height: 1;
+  }
+
+  .topbar-right {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    margin-left: 16px;
+    flex-shrink: 0;
+  }
+  .task-count { font-size: 12px; color: var(--muted); }
+  .btn-new {
+    font-size: 13px;
+    padding: 6px 14px;
+    border-radius: 6px;
+    border: 1px solid var(--border-h);
+    background: transparent;
+    color: var(--text);
+    cursor: pointer;
+    font-family: 'DM Sans', sans-serif;
+    transition: background .15s;
+  }
+  .btn-new:hover { background: #222; }
+
+  .user-pill {
+    display: flex;
+    align-items: center;
+    gap: 7px;
+    background: #222;
+    border: 1px solid var(--border);
+    border-radius: 20px;
+    padding: 4px 12px 4px 4px;
+    font-size: 13px;
+    cursor: pointer;
+    transition: border-color .15s;
+  }
+  .user-pill:hover { border-color: var(--border-h); }
+  .avatar {
+    width: 24px; height: 24px; border-radius: 50%;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 10px; font-weight: 500; flex-shrink: 0;
+  }
+
+  /* WORKSPACE */
+  .workspace {
+    flex: 1;
+    min-height: 0;
+    display: flex;
+    gap: 14px;
+    padding: 16px;
+    overflow: hidden;
+  }
+
+  /* BOARD */
+  .board-wrap {
+    flex: 1;
+    min-width: 0;
+    overflow-x: auto;
+    overflow-y: hidden;
+    display: flex;
+    align-items: flex-start;
+    gap: 10px;
+  }
+
+  .col {
+    min-width: 230px;
+    width: 230px;
+    flex-shrink: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    height: 100%;
+  }
+
+  .col-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 2px 4px 8px;
+  }
+  .col-title {
+    font-size: 11px;
+    font-weight: 500;
+    color: var(--muted);
+    text-transform: uppercase;
+    letter-spacing: .07em;
+  }
+  .col-count {
+    font-size: 11px;
+    color: var(--muted);
+    background: #222;
+    border-radius: 10px;
+    padding: 1px 7px;
+  }
+
+  .col-cards {
+    flex: 1;
+    overflow-y: auto;
+    display: flex;
+    flex-direction: column;
+    gap: 7px;
+    padding-right: 2px;
+  }
+  .col-cards::-webkit-scrollbar { width: 3px; }
+  .col-cards::-webkit-scrollbar-track { background: transparent; }
+  .col-cards::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
+
+  .card {
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: var(--r);
+    padding: 11px 13px;
+    cursor: pointer;
+    transition: border-color .15s, transform .1s;
+    position: relative;
+  }
+  .card:hover { border-color: var(--border-h); transform: translateY(-1px); }
+  .card.selected {
+    border-color: var(--accent);
+    box-shadow: inset 0 0 0 1px var(--accent);
+  }
+  .card.in-progress { border-left: 2.5px solid var(--blue); border-radius: 0 var(--r) var(--r) 0; }
+  .card.done { opacity: .5; }
+
+  .card-title {
+    font-size: 13px;
+    line-height: 1.45;
+    margin-bottom: 8px;
+    color: var(--text);
+  }
+  .card.done .card-title { text-decoration: line-through; color: var(--muted); }
+
+  .card-meta {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    flex-wrap: wrap;
+  }
+
+  .badge {
+    font-size: 11px;
+    padding: 2px 7px;
+    border-radius: 10px;
+    font-weight: 500;
+  }
+  .p-wysoki  { background: #faece7; color: #993c1d; }
+  .p-sredni  { background: #faeeda; color: #854f0b; }
+  .p-niski   { background: #eaf3de; color: #3b6d11; }
+
+  .av-sm {
+    width: 20px; height: 20px; border-radius: 50%;
+    font-size: 9px; font-weight: 500;
+    display: flex; align-items: center; justify-content: center;
+    flex-shrink: 0;
+  }
+
+  .checklist-preview {
+    margin-top: 7px;
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+  }
+  .cl-row {
+    display: flex;
+    align-items: center;
+    gap: 5px;
+    font-size: 11px;
+    color: var(--muted);
+  }
+  .cl-box {
+    width: 11px; height: 11px;
+    border: 1px solid #3a3a3a;
+    border-radius: 3px; flex-shrink: 0;
+  }
+  .cl-box.done { background: #1d9e75; border-color: #1d9e75; }
+  .cl-text.done { text-decoration: line-through; }
+
+  .add-card {
+    font-size: 12px;
+    color: var(--muted);
+    padding: 8px 10px;
+    border: 1px dashed var(--border);
+    border-radius: var(--r);
+    cursor: pointer;
+    text-align: center;
+    background: transparent;
+    transition: color .15s, border-color .15s;
+    font-family: 'DM Sans', sans-serif;
+    flex-shrink: 0;
+  }
+  .add-card:hover { color: var(--text); border-color: var(--border-h); }
+
+  /* TASK SIDEBAR */
+  .task-sidebar {
+    width: 340px;
+    flex-shrink: 0;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    display: flex;
+    flex-direction: column;
+    min-height: 0;
+    overflow: hidden;
+  }
+
+  .sidebar-empty {
+    flex: 1;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    text-align: center;
+    padding: 24px;
+    color: var(--muted);
+    font-size: 14px;
+    line-height: 1.6;
+  }
+
+  .sidebar-content {
+    display: none;
+    flex: 1;
+    min-height: 0;
+    padding: 14px 16px 16px;
+    overflow-y: auto;
+  }
+
+  .sidebar-content.open { display: block; }
+
+  .task-top {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    margin-bottom: 10px;
+  }
+
+  .task-top-label {
+    font-size: 11px;
+    color: var(--muted);
+    text-transform: uppercase;
+    letter-spacing: .07em;
+  }
+
+  .btn-close-task {
+    border: 1px solid var(--border-h);
+    background: transparent;
+    color: var(--muted);
+    width: 26px;
+    height: 26px;
+    border-radius: 6px;
+    cursor: pointer;
+    font-size: 15px;
+    line-height: 1;
+  }
+  .btn-close-task:hover { color: var(--text); background: #212121; }
+
+  [contenteditable] { outline: none; }
+
+  .task-title {
+    font-size: 19px;
+    font-weight: 500;
+    color: var(--text);
+    line-height: 1.4;
+    border-bottom: 1.5px solid transparent;
+    padding-bottom: 4px;
+    margin-bottom: 14px;
+    min-height: 30px;
+    transition: border-color .15s;
+  }
+  .task-title:hover { border-bottom-color: var(--border-h); }
+  .task-title:focus { border-bottom-color: var(--accent); }
+
+  .section-label {
+    font-size: 11px;
+    font-weight: 500;
+    color: var(--muted);
+    text-transform: uppercase;
+    letter-spacing: .07em;
+    margin-bottom: 8px;
+    margin-top: 16px;
+  }
+
+  .task-desc {
+    font-size: 14px;
+    color: #aaa;
+    line-height: 1.65;
+    border: 1px solid transparent;
+    border-radius: var(--r);
+    padding: 9px 10px;
+    min-height: 70px;
+    transition: border-color .15s, background .15s;
+    white-space: pre-wrap;
+  }
+  .task-desc:hover,
+  .task-desc:focus {
+    border-color: var(--border-h);
+    background: #1a1a1a;
+  }
+  .task-desc:empty::before {
+    content: attr(data-placeholder);
+    color: var(--muted);
+    pointer-events: none;
+  }
+
+  .meta-grid {
+    margin-top: 14px;
+    display: grid;
+    grid-template-columns: 1fr;
+    gap: 12px;
+  }
+
+  .meta-block { display: flex; flex-direction: column; gap: 5px; }
+  .meta-key {
+    font-size: 11px;
+    font-weight: 500;
+    color: var(--muted);
+    text-transform: uppercase;
+    letter-spacing: .06em;
+  }
+
+  select {
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: var(--r);
+    color: var(--text);
+    font-family: 'DM Sans', sans-serif;
+    font-size: 13px;
+    padding: 7px 10px;
+    outline: none;
+    cursor: pointer;
+    transition: border-color .15s;
+    width: 100%;
+    appearance: none;
+    background-image: url("data:image/svg+xml,%3Csvg width='12' height='7' viewBox='0 0 12 7' fill='none' xmlns='http://www.w3.org/2000/svg'%3E%3Cpath d='M1 1l5 5 5-5' stroke='%23555' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
+    background-repeat: no-repeat;
+    background-position: right 10px center;
+    padding-right: 28px;
+  }
+  select:hover, select:focus { border-color: var(--border-h); }
+
+  .assignees-list {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    align-items: center;
+  }
+  .av-member {
+    width: 28px; height: 28px; border-radius: 50%;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 11px; font-weight: 500;
+    cursor: pointer;
+    position: relative;
+    transition: transform .15s;
+  }
+  .av-member:hover { transform: scale(1.1); }
+  .av-member.selected::after {
+    content: '';
+    position: absolute;
+    inset: -2px;
+    border-radius: 50%;
+    border: 2px solid var(--accent);
+  }
+  .av-member.unselected { opacity: .3; }
+
+  .progress-wrap { margin-top: 10px; margin-bottom: 8px; }
+  .progress-text { font-size: 12px; color: var(--muted); margin-bottom: 6px; }
+  .progress-bar {
+    height: 3px;
+    background: var(--border);
+    border-radius: 2px;
+    overflow: hidden;
+  }
+  .progress-fill {
+    height: 100%;
+    background: var(--blue);
+    border-radius: 2px;
+    transition: width .3s;
+  }
+
+  .checklist { display: flex; flex-direction: column; gap: 0; }
+  .cl-item {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 8px 0;
+    border-bottom: 1px solid var(--border);
+  }
+  .cl-item:first-child { border-top: 1px solid var(--border); }
+
+  .cl-check {
+    width: 16px; height: 16px;
+    border-radius: 50%;
+    border: 1px solid var(--border-h);
+    flex-shrink: 0;
+    cursor: pointer;
+    display: flex; align-items: center; justify-content: center;
+    transition: background .15s, border-color .15s;
+  }
+  .cl-check.done { background: var(--green); border-color: var(--green); }
+  .cl-check.done::after {
+    content: '';
+    width: 6px; height: 4px;
+    border-left: 1.5px solid white;
+    border-bottom: 1.5px solid white;
+    transform: rotate(-45deg) translateY(-1px);
+  }
+
+  .cl-text-input {
+    flex: 1;
+    background: transparent;
+    border: none;
+    color: var(--text);
+    font-family: 'DM Sans', sans-serif;
+    font-size: 14px;
+    outline: none;
+    padding: 0;
+  }
+  .cl-text-input.done { text-decoration: line-through; color: var(--muted); }
+
+  .cl-delete {
+    background: none;
+    border: none;
+    color: var(--muted);
+    cursor: pointer;
+    font-size: 16px;
+    padding: 0 4px;
+    line-height: 1;
+    opacity: 0;
+    transition: opacity .15s, color .15s;
+  }
+  .cl-item:hover .cl-delete { opacity: 1; }
+  .cl-delete:hover { color: #ff5555; }
+
+  .btn-add-cl {
+    font-size: 13px;
+    color: var(--muted);
+    background: none;
+    border: none;
+    cursor: pointer;
+    padding: 10px 0;
+    font-family: 'DM Sans', sans-serif;
+    text-align: left;
+    transition: color .15s;
+  }
+  .btn-add-cl:hover { color: var(--text); }
+
+  .created-info {
+    font-size: 11px;
+    color: var(--muted);
+    line-height: 1.6;
+    border-top: 1px solid var(--border);
+    padding-top: 12px;
+    margin-top: 8px;
+  }
+
+  .btn-delete {
+    font-size: 12px;
+    color: #ff5555;
+    background: none;
+    border: 1px solid #ff555533;
+    border-radius: var(--r);
+    padding: 8px 12px;
+    cursor: pointer;
+    font-family: 'DM Sans', sans-serif;
+    transition: background .15s;
+    width: 100%;
+    margin-top: 10px;
+  }
+  .btn-delete:hover { background: #ff555511; }
+
+  /* MODAL — new section */
+  .overlay {
+    display: none;
+    position: fixed; inset: 0;
+    background: rgba(0,0,0,.6);
+    z-index: 100;
+    align-items: center;
+    justify-content: center;
+  }
+  .overlay.open { display: flex; }
+  .modal {
+    background: var(--surface);
+    border: 1px solid var(--border-h);
+    border-radius: 14px;
+    padding: 28px 28px 24px;
+    min-width: 320px;
+  }
+  .modal h2 { font-size: 16px; font-weight: 500; margin-bottom: 16px; }
+  .modal input {
+    width: 100%;
+    background: var(--bg);
+    border: 1px solid var(--border-h);
+    border-radius: var(--r);
+    color: var(--text);
+    font-family: 'DM Sans', sans-serif;
+    font-size: 14px;
+    padding: 10px 12px;
+    outline: none;
+    margin-bottom: 16px;
+  }
+  .modal input:focus { border-color: var(--accent); }
+  .modal-btns { display: flex; gap: 8px; justify-content: flex-end; }
+  .btn-cancel {
+    padding: 8px 16px; border-radius: var(--r);
+    border: 1px solid var(--border-h); background: transparent;
+    color: var(--muted); cursor: pointer; font-family: 'DM Sans', sans-serif;
+    font-size: 13px;
+  }
+  .btn-accent {
+    padding: 8px 16px; border-radius: var(--r);
+    border: none; background: var(--accent); color: #0f0f0f;
+    cursor: pointer; font-family: 'DM Sans', sans-serif;
+    font-size: 13px; font-weight: 500;
+  }
+  .btn-accent:hover { background: var(--accent-d); }
+
+  /* LOADING */
+  .loading {
+    position: fixed; inset: 0;
+    background: var(--bg);
+    display: flex; align-items: center; justify-content: center;
+    font-family: 'DM Mono', monospace;
+    font-size: 13px; color: var(--muted);
+    z-index: 200;
+    transition: opacity .3s;
+  }
+  .loading.hide { opacity: 0; pointer-events: none; }
+
+  @media (max-width: 1120px) {
+    body { height: auto; min-height: 100vh; overflow: auto; }
+    .workspace {
+      flex-direction: column;
+      overflow: visible;
+    }
+    .board-wrap {
+      min-height: 55vh;
+      overflow-y: auto;
+      padding-bottom: 6px;
+    }
+    .task-sidebar {
+      width: 100%;
+      min-height: 380px;
+    }
+  }
+</style>
+</head>
+<body>
+<script src="config.js"></script>
+
+<div class="loading" id="loading">ładowanie boardu...</div>
+
+<div class="topbar">
+  <div class="logo">Modéa</div>
+  <div class="tabs" id="tabs"></div>
+  <div class="topbar-right">
+    <span class="task-count" id="task-count"></span>
+    <button class="btn-new" id="btn-new">+ Nowe zadanie</button>
+    <div class="user-pill" id="user-pill" title="Zmień użytkownika">
+      <div class="avatar" id="user-av"></div>
+      <span id="user-name"></span>
+    </div>
+  </div>
+</div>
+
+<div class="workspace">
+  <div class="board-wrap" id="board"></div>
+
+  <aside class="task-sidebar">
+    <div class="sidebar-empty" id="task-empty">
+      Wybierz kartę z boardu, aby edytować zadanie tutaj.
+    </div>
+
+    <div class="sidebar-content" id="task-content">
+      <div class="task-top">
+        <div class="task-top-label">Edycja zadania</div>
+        <button class="btn-close-task" id="btn-close-task" title="Zamknij">×</button>
+      </div>
+
+      <div class="task-title" id="task-title" contenteditable="true" spellcheck="false"></div>
+
+      <div class="section-label">Opis</div>
+      <div
+        class="task-desc"
+        id="task-desc"
+        contenteditable="true"
+        data-placeholder="Dodaj opis zadania..."
+        spellcheck="false"
+      ></div>
+
+      <div class="meta-grid">
+        <div class="meta-block">
+          <div class="meta-key">Status</div>
+          <select id="sel-column"></select>
+        </div>
+
+        <div class="meta-block">
+          <div class="meta-key">Priorytet</div>
+          <select id="sel-priority">
+            <option value="Wysoki">Wysoki</option>
+            <option value="Średni">Średni</option>
+            <option value="Niski">Niski</option>
+          </select>
+        </div>
+
+        <div class="meta-block">
+          <div class="meta-key">Sekcja</div>
+          <select id="sel-section"></select>
+        </div>
+
+        <div class="meta-block">
+          <div class="meta-key">Przypisane do</div>
+          <div class="assignees-list" id="assignees-list"></div>
+        </div>
+      </div>
+
+      <div class="section-label">Checklista</div>
+      <div class="progress-wrap" id="progress-wrap" style="display:none">
+        <div class="progress-text" id="progress-text"></div>
+        <div class="progress-bar"><div class="progress-fill" id="progress-fill"></div></div>
+      </div>
+      <div class="checklist" id="checklist"></div>
+      <button class="btn-add-cl" id="btn-add-cl">+ dodaj punkt</button>
+
+      <div class="created-info" id="created-info"></div>
+
+      <button class="btn-delete" id="btn-delete">Usuń zadanie</button>
+    </div>
+  </aside>
+</div>
+
+<div class="overlay" id="overlay-section">
+  <div class="modal">
+    <h2>Nowa sekcja</h2>
+    <input type="text" id="new-section-input" placeholder="np. QA, Marketing...">
+    <div class="modal-btns">
+      <button class="btn-cancel" id="cancel-section">Anuluj</button>
+      <button class="btn-accent" id="confirm-section">Dodaj</button>
+    </div>
+  </div>
+</div>
+
+<script type="module">
+import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
+import { getDatabase, ref, onValue, push, set, update, remove } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-database.js";
+
+const app = initializeApp(FIREBASE_CONFIG);
+const db  = getDatabase(app);
+
+const user = JSON.parse(localStorage.getItem('kb_user'));
+if (!user) window.location.href = 'index.html';
+
+document.getElementById('user-av').style.cssText   = `background:${user.color}22;color:${user.color}`;
+document.getElementById('user-av').textContent      = user.initials;
+document.getElementById('user-name').textContent    = user.name;
+document.getElementById('user-pill').addEventListener('click', () => {
+  localStorage.removeItem('kb_user');
+  window.location.href = 'index.html';
+});
+
+let activeSection = null;
+let sections      = [];
+let allTasks      = {};
+let selectedTaskId = null;
+let saveTimer = null;
+
+function getTaskRef(id = selectedTaskId) {
+  return ref(db, `tasks/${id}`);
+}
+
+function scheduleSaveTask(patch) {
+  if (!selectedTaskId) return;
+  const saveId = selectedTaskId;
+  clearTimeout(saveTimer);
+  saveTimer = setTimeout(() => update(getTaskRef(saveId), patch), 600);
+}
+
+function openTaskSidebar(id) {
+  if (!id || !allTasks[id]) return;
+  selectedTaskId = id;
+  renderBoard();
+  renderTaskSidebar();
+}
+
+function closeTaskSidebar() {
+  selectedTaskId = null;
+  renderBoard();
+  renderTaskSidebar();
+}
+
+function getMemberColor(id) {
+  const m = TEAM_MEMBERS.find(m => m.id === id);
+  return m ? m.color : '#555';
+}
+function getMemberInitials(id) {
+  const m = TEAM_MEMBERS.find(m => m.id === id);
+  return m ? m.initials : '?';
+}
+
+function renderTabs() {
+  const tabsEl = document.getElementById('tabs');
+  tabsEl.innerHTML = '';
+  sections.forEach(s => {
+    const btn = document.createElement('button');
+    btn.className = 'tab' + (s === activeSection ? ' active' : '');
+    btn.textContent = s;
+    btn.addEventListener('click', () => { activeSection = s; renderTabs(); renderBoard(); });
+    tabsEl.appendChild(btn);
+  });
+  const addBtn = document.createElement('button');
+  addBtn.className = 'tab tab-add';
+  addBtn.textContent = '+';
+  addBtn.title = 'Dodaj sekcję';
+  addBtn.addEventListener('click', () => document.getElementById('overlay-section').classList.add('open'));
+  tabsEl.appendChild(addBtn);
+}
+
+function renderBoard() {
+  const board = document.getElementById('board');
+  board.innerHTML = '';
+
+  if (selectedTaskId) {
+    const picked = allTasks[selectedTaskId];
+    if (!picked || picked.section !== activeSection) selectedTaskId = null;
+  }
+
+  const sectionTasks = Object.entries(allTasks)
+    .filter(([, t]) => t.section === activeSection)
+    .map(([id, t]) => ({ id, ...t }));
+
+  document.getElementById('task-count').textContent = `${activeSection} · ${sectionTasks.length} zadań`;
+
+  COLUMNS.forEach(col => {
+    const colTasks = sectionTasks.filter(t => t.column === col);
+    const colEl = document.createElement('div');
+    colEl.className = 'col';
+
+    colEl.innerHTML = `
+      <div class="col-header">
+        <span class="col-title">${col}</span>
+        <span class="col-count">${colTasks.length}</span>
+      </div>
+      <div class="col-cards" id="col-${col.replace(/\s/g,'_')}"></div>
+      <button class="add-card" data-col="${col}">+ dodaj zadanie</button>
+    `;
+    board.appendChild(colEl);
+
+    const cardsEl = colEl.querySelector('.col-cards');
+    colTasks.forEach(task => {
+      const card = document.createElement('div');
+      const isDone = col === 'Zrobione';
+      const isIP   = col === 'W trakcie';
+      card.className = 'card' + (isDone ? ' done' : '') + (isIP ? ' in-progress' : '');
+
+      const priorityClass = { 'Wysoki': 'p-wysoki', 'Średni': 'p-sredni', 'Niski': 'p-niski' }[task.priority] || 'p-niski';
+      const assignees = Array.isArray(task.assignees) ? task.assignees : [];
+      const checklist = task.checklist || [];
+      const doneCount = checklist.filter(c => c.done).length;
+
+      let checklistHTML = '';
+      if (checklist.length > 0) {
+        checklistHTML = `<div class="checklist-preview">`;
+        checklist.slice(0,3).forEach(c => {
+          checklistHTML += `<div class="cl-row">
+            <div class="cl-box${c.done ? ' done' : ''}"></div>
+            <span class="cl-text${c.done ? ' done' : ''}">${c.text}</span>
+          </div>`;
+        });
+        if (checklist.length > 3) checklistHTML += `<div class="cl-row" style="color:#3a3a3a">+${checklist.length - 3} więcej</div>`;
+        checklistHTML += `</div>`;
+      }
+
+      card.innerHTML = `
+        <div class="card-title">${task.title}</div>
+        <div class="card-meta">
+          ${task.priority ? `<span class="badge ${priorityClass}">${task.priority}</span>` : ''}
+          ${assignees.map(id => `<div class="av-sm" style="background:${getMemberColor(id)}22;color:${getMemberColor(id)}">${getMemberInitials(id)}</div>`).join('')}
+          ${checklist.length > 0 ? `<span style="font-size:11px;color:var(--muted);margin-left:auto">${doneCount}/${checklist.length}</span>` : ''}
+        </div>
+        ${checklistHTML}
+      `;
+
+      card.addEventListener('click', () => {
+        openTaskSidebar(task.id);
+      });
+      if (task.id === selectedTaskId) card.classList.add('selected');
+      cardsEl.appendChild(card);
+    });
+
+    colEl.querySelector('.add-card').addEventListener('click', () => {
+      const newTask = {
+        title: 'Nowe zadanie',
+        section: activeSection,
+        column: col,
+        priority: 'Niski',
+        description: '',
+        assignees: [user.id],
+        checklist: [],
+        createdAt: Date.now(),
+        createdBy: user.id
+      };
+      const taskRef = push(ref(db, 'tasks'), newTask);
+      openTaskSidebar(taskRef.key);
+    });
+  });
+}
+
+function populateColumns(task) {
+  const sel = document.getElementById('sel-column');
+  sel.innerHTML = '';
+  COLUMNS.forEach(c => {
+    const opt = document.createElement('option');
+    opt.value = c;
+    opt.textContent = c;
+    if (c === task.column) opt.selected = true;
+    sel.appendChild(opt);
+  });
+}
+
+function populateSections(task) {
+  const sel = document.getElementById('sel-section');
+  sel.innerHTML = '';
+  sections.forEach(s => {
+    const opt = document.createElement('option');
+    opt.value = s;
+    opt.textContent = s;
+    if (s === task.section) opt.selected = true;
+    sel.appendChild(opt);
+  });
+}
+
+function renderAssignees(task) {
+  const el = document.getElementById('assignees-list');
+  el.innerHTML = '';
+  TEAM_MEMBERS.forEach(m => {
+    const selected = (task.assignees || []).includes(m.id);
+    const av = document.createElement('div');
+    av.className = 'av-member' + (selected ? ' selected' : ' unselected');
+    av.title = m.name;
+    av.textContent = m.initials;
+    av.style.cssText = `background:${m.color}22;color:${m.color}`;
+    av.addEventListener('click', () => {
+      if (!selectedTaskId || !allTasks[selectedTaskId]) return;
+      let assignees = [...(allTasks[selectedTaskId].assignees || [])];
+      if (selected) assignees = assignees.filter(id => id !== m.id);
+      else assignees.push(m.id);
+      allTasks[selectedTaskId].assignees = assignees;
+      update(getTaskRef(), { assignees });
+      renderAssignees(allTasks[selectedTaskId]);
+      renderBoard();
+    });
+    el.appendChild(av);
+  });
+}
+
+function updateProgress(task) {
+  const cl = task.checklist || [];
+  const done = cl.filter(c => c.done).length;
+  const wrap = document.getElementById('progress-wrap');
+  const text = document.getElementById('progress-text');
+  const fill = document.getElementById('progress-fill');
+  if (cl.length === 0) {
+    wrap.style.display = 'none';
+    return;
+  }
+  wrap.style.display = 'block';
+  text.textContent = `${done} / ${cl.length} punktów`;
+  fill.style.width = `${Math.round((done / cl.length) * 100)}%`;
+}
+
+function renderChecklist(task) {
+  const el = document.getElementById('checklist');
+  el.innerHTML = '';
+
+  (task.checklist || []).forEach((item, i) => {
+    const row = document.createElement('div');
+    row.className = 'cl-item';
+
+    const check = document.createElement('div');
+    check.className = 'cl-check' + (item.done ? ' done' : '');
+    check.addEventListener('click', () => {
+      if (!selectedTaskId || !allTasks[selectedTaskId]) return;
+      allTasks[selectedTaskId].checklist[i].done = !allTasks[selectedTaskId].checklist[i].done;
+      update(getTaskRef(), { checklist: allTasks[selectedTaskId].checklist });
+      renderChecklist(allTasks[selectedTaskId]);
+      updateProgress(allTasks[selectedTaskId]);
+      renderBoard();
+    });
+
+    const input = document.createElement('input');
+    input.type = 'text';
+    input.className = 'cl-text-input' + (item.done ? ' done' : '');
+    input.value = item.text;
+    input.addEventListener('input', () => {
+      if (!selectedTaskId || !allTasks[selectedTaskId]) return;
+      allTasks[selectedTaskId].checklist[i].text = input.value;
+      scheduleSaveTask({ checklist: allTasks[selectedTaskId].checklist });
+    });
+    input.addEventListener('keydown', e => {
+      if (!selectedTaskId || !allTasks[selectedTaskId]) return;
+      if (e.key === 'Enter') {
+        e.preventDefault();
+        allTasks[selectedTaskId].checklist.splice(i + 1, 0, { text: '', done: false });
+        update(getTaskRef(), { checklist: allTasks[selectedTaskId].checklist });
+        renderChecklist(allTasks[selectedTaskId]);
+        updateProgress(allTasks[selectedTaskId]);
+        const items = document.querySelectorAll('.cl-text-input');
+        if (items[i + 1]) items[i + 1].focus();
+      }
+      if (e.key === 'Backspace' && input.value === '' && allTasks[selectedTaskId].checklist.length > 1) {
+        e.preventDefault();
+        allTasks[selectedTaskId].checklist.splice(i, 1);
+        update(getTaskRef(), { checklist: allTasks[selectedTaskId].checklist });
+        renderChecklist(allTasks[selectedTaskId]);
+        updateProgress(allTasks[selectedTaskId]);
+        const items = document.querySelectorAll('.cl-text-input');
+        const prev = items[i - 1];
+        if (prev) {
+          prev.focus();
+          const len = prev.value.length;
+          prev.setSelectionRange(len, len);
+        }
+      }
+    });
+
+    const del = document.createElement('button');
+    del.className = 'cl-delete';
+    del.textContent = '×';
+    del.addEventListener('click', () => {
+      if (!selectedTaskId || !allTasks[selectedTaskId]) return;
+      allTasks[selectedTaskId].checklist.splice(i, 1);
+      update(getTaskRef(), { checklist: allTasks[selectedTaskId].checklist });
+      renderChecklist(allTasks[selectedTaskId]);
+      updateProgress(allTasks[selectedTaskId]);
+      renderBoard();
+    });
+
+    row.append(check, input, del);
+    el.appendChild(row);
+  });
+
+  updateProgress(task);
+}
+
+function renderTaskSidebar() {
+  const task = selectedTaskId ? allTasks[selectedTaskId] : null;
+  const emptyEl = document.getElementById('task-empty');
+  const contentEl = document.getElementById('task-content');
+
+  if (!task) {
+    emptyEl.style.display = 'flex';
+    contentEl.classList.remove('open');
+    return;
+  }
+
+  if (!Array.isArray(task.checklist)) task.checklist = [];
+  if (!Array.isArray(task.assignees)) task.assignees = [];
+
+  emptyEl.style.display = 'none';
+  contentEl.classList.add('open');
+
+  const titleEl = document.getElementById('task-title');
+  const descEl = document.getElementById('task-desc');
+
+  if (titleEl.textContent !== (task.title || '')) titleEl.textContent = task.title || '';
+  if (descEl.textContent !== (task.description || '')) descEl.textContent = task.description || '';
+
+  document.getElementById('sel-priority').value = task.priority || 'Niski';
+
+  populateColumns(task);
+  populateSections(task);
+  renderAssignees(task);
+  renderChecklist(task);
+
+  const creator = TEAM_MEMBERS.find(m => m.id === task.createdBy);
+  document.getElementById('created-info').innerHTML =
+    `Utworzone przez <strong>${creator ? creator.name : 'kogoś'}</strong><br>${task.createdAt ? new Date(task.createdAt).toLocaleDateString('pl-PL', { day: 'numeric', month: 'long', year: 'numeric' }) : ''}`;
+}
+
+document.getElementById('btn-new').addEventListener('click', () => {
+  const newTask = {
+    title: 'Nowe zadanie',
+    section: activeSection,
+    column: 'Backlog',
+    priority: 'Niski',
+    description: '',
+    assignees: [user.id],
+    checklist: [],
+    createdAt: Date.now(),
+    createdBy: user.id
+  };
+  const taskRef = push(ref(db, 'tasks'), newTask);
+  openTaskSidebar(taskRef.key);
+});
+
+document.getElementById('btn-close-task').addEventListener('click', closeTaskSidebar);
+
+const taskTitleEl = document.getElementById('task-title');
+taskTitleEl.addEventListener('input', () => {
+  if (!selectedTaskId || !allTasks[selectedTaskId]) return;
+  allTasks[selectedTaskId].title = taskTitleEl.textContent.trim();
+  scheduleSaveTask({ title: allTasks[selectedTaskId].title });
+  renderBoard();
+});
+taskTitleEl.addEventListener('keydown', e => {
+  if (e.key === 'Enter') {
+    e.preventDefault();
+    taskTitleEl.blur();
+  }
+});
+
+const taskDescEl = document.getElementById('task-desc');
+taskDescEl.addEventListener('input', () => {
+  if (!selectedTaskId || !allTasks[selectedTaskId]) return;
+  allTasks[selectedTaskId].description = taskDescEl.textContent;
+  scheduleSaveTask({ description: allTasks[selectedTaskId].description });
+});
+
+document.getElementById('sel-column').addEventListener('change', e => {
+  if (!selectedTaskId || !allTasks[selectedTaskId]) return;
+  allTasks[selectedTaskId].column = e.target.value;
+  update(getTaskRef(), { column: allTasks[selectedTaskId].column });
+  renderBoard();
+});
+
+document.getElementById('sel-priority').addEventListener('change', e => {
+  if (!selectedTaskId || !allTasks[selectedTaskId]) return;
+  allTasks[selectedTaskId].priority = e.target.value;
+  update(getTaskRef(), { priority: allTasks[selectedTaskId].priority });
+  renderBoard();
+});
+
+document.getElementById('sel-section').addEventListener('change', e => {
+  if (!selectedTaskId || !allTasks[selectedTaskId]) return;
+  allTasks[selectedTaskId].section = e.target.value;
+  update(getTaskRef(), { section: allTasks[selectedTaskId].section });
+  renderBoard();
+  renderTaskSidebar();
+});
+
+document.getElementById('btn-add-cl').addEventListener('click', () => {
+  if (!selectedTaskId || !allTasks[selectedTaskId]) return;
+  allTasks[selectedTaskId].checklist.push({ text: '', done: false });
+  update(getTaskRef(), { checklist: allTasks[selectedTaskId].checklist });
+  renderChecklist(allTasks[selectedTaskId]);
+  const inputs = document.querySelectorAll('.cl-text-input');
+  if (inputs.length) inputs[inputs.length - 1].focus();
+  renderBoard();
+});
+
+document.getElementById('btn-delete').addEventListener('click', () => {
+  if (!selectedTaskId) return;
+  if (confirm('Usunąć to zadanie na zawsze?')) {
+    const deletingId = selectedTaskId;
+    remove(getTaskRef(deletingId));
+    selectedTaskId = null;
+    renderBoard();
+    renderTaskSidebar();
+  }
+});
+
+document.getElementById('cancel-section').addEventListener('click', () => {
+  document.getElementById('overlay-section').classList.remove('open');
+  document.getElementById('new-section-input').value = '';
+});
+document.getElementById('confirm-section').addEventListener('click', async () => {
+  const name = document.getElementById('new-section-input').value.trim();
+  if (!name) return;
+  const newSections = [...sections, name];
+  await set(ref(db, 'sections'), newSections);
+  document.getElementById('overlay-section').classList.remove('open');
+  document.getElementById('new-section-input').value = '';
+});
+
+onValue(ref(db, 'sections'), snap => {
+  const val = snap.val();
+  sections = val || SECTIONS;
+  if (!activeSection || !sections.includes(activeSection)) activeSection = sections[0];
+  renderTabs();
+  renderBoard();
+  renderTaskSidebar();
+});
+
+onValue(ref(db, 'tasks'), snap => {
+  allTasks = snap.val() || {};
+  if (selectedTaskId && !allTasks[selectedTaskId]) selectedTaskId = null;
+  renderBoard();
+  renderTaskSidebar();
+  document.getElementById('loading').classList.add('hide');
+});
+</script>
+</body>
+</html>
