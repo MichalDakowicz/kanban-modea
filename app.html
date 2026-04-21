@@ -204,7 +204,27 @@
     display: flex;
     flex-direction: column;
     gap: 7px;
+    padding: 6px 4px;
     padding-right: 2px;
+    border-radius: var(--r);
+    transition: background .15s, box-shadow .15s, border-color .15s;
+    position: relative;
+    border: 1px dashed transparent;
+    min-height: 72px;
+  }
+  .col-cards.drag-over {
+    background: rgba(200, 245, 66, .08);
+    border-color: rgba(200, 245, 66, .45);
+    box-shadow: inset 0 0 0 1px rgba(200, 245, 66, .2);
+  }
+  .col-cards.drag-over::after {
+    content: '';
+    position: absolute;
+    left: 6px;
+    right: 6px;
+    bottom: 6px;
+    border-bottom: 2px dashed rgba(200, 245, 66, .65);
+    pointer-events: none;
   }
   .col-cards::-webkit-scrollbar { width: 3px; }
   .col-cards::-webkit-scrollbar-track { background: transparent; }
@@ -226,6 +246,19 @@
   }
   .card.in-progress { border-left: 2.5px solid var(--blue); border-radius: 0 var(--r) var(--r) 0; }
   .card.done { opacity: .5; }
+  .card.card-dragging {
+    opacity: .45;
+    transform: scale(.98) rotate(-0.3deg);
+    cursor: grabbing;
+    box-shadow: 0 8px 22px rgba(0, 0, 0, .35);
+  }
+  .card.card-chosen {
+    border-color: rgba(200, 245, 66, .6);
+    box-shadow: inset 0 0 0 1px rgba(200, 245, 66, .45);
+  }
+  .card.card-ghost {
+    opacity: .25;
+  }
 
   .card-title {
     font-size: 13px;
@@ -1017,6 +1050,7 @@
   </div>
 </div>
 
+<script src="https://cdn.jsdelivr.net/npm/sortablejs@1.15.2/Sortable.min.js"></script>
 <script type="module">
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
 import { getDatabase, ref, onValue, push, set, update, remove } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-database.js";
@@ -1041,6 +1075,7 @@ let allTasks      = {};
 let selectedTaskId = null;
 let commentDraft = '';
 let issueDraft = '';
+let boardSortables = [];
 let saveTimer = null;
 const FALLBACK_PAGE_TYPE = ['Uczeń', 'Nauczyciel', 'Rodzic', 'Administracja'];
 const PAGE_TYPE = Array.isArray(window.PAGE_TYPE) && window.PAGE_TYPE.length
@@ -1375,6 +1410,64 @@ function renderAudienceFilters() {
   });
 }
 
+function clearBoardDropTargets() {
+  document.querySelectorAll('.col-cards.drag-over').forEach(el => el.classList.remove('drag-over'));
+}
+
+function setBoardDropTarget(cardsEl) {
+  if (!cardsEl) return;
+  clearBoardDropTargets();
+  cardsEl.classList.add('drag-over');
+}
+
+function initBoardDragAndDrop() {
+  boardSortables.forEach(instance => instance.destroy());
+  boardSortables = [];
+
+  document.querySelectorAll('.col-cards').forEach(cardsEl => {
+    const sortable = Sortable.create(cardsEl, {
+      group: 'kanban-columns',
+      animation: 160,
+      easing: 'cubic-bezier(0.2, 0.8, 0.2, 1)',
+      draggable: '.card',
+      sort: false,
+      ghostClass: 'card-ghost',
+      chosenClass: 'card-chosen',
+      dragClass: 'card-dragging',
+      onStart: evt => {
+        setBoardDropTarget(evt.from);
+      },
+      onMove: evt => {
+        if (!evt.to) return true;
+        setBoardDropTarget(evt.to);
+        return true;
+      },
+      onEnd: evt => {
+        clearBoardDropTargets();
+
+        const taskId = evt.item?.dataset.taskId;
+        const fromCol = evt.from?.dataset.column;
+        const toCol = evt.to?.dataset.column;
+
+        if (!taskId || !toCol || !allTasks[taskId]) {
+          renderBoard();
+          return;
+        }
+
+        if (fromCol !== toCol) {
+          allTasks[taskId].column = toCol;
+          update(getTaskRef(taskId), { column: toCol });
+        }
+
+        renderBoard();
+        if (selectedTaskId === taskId) renderTaskSidebar();
+      }
+    });
+
+    boardSortables.push(sortable);
+  });
+}
+
 function renderBoard() {
   const board = document.getElementById('board');
   board.innerHTML = '';
@@ -1408,11 +1501,14 @@ function renderBoard() {
     board.appendChild(colEl);
 
     const cardsEl = colEl.querySelector('.col-cards');
+    cardsEl.dataset.column = col;
+
     colTasks.forEach(task => {
       const card = document.createElement('div');
       const isDone = col === 'Zrobione';
       const isIP   = col === 'W trakcie';
       card.className = 'card' + (isDone ? ' done' : '') + (isIP ? ' in-progress' : '');
+      card.dataset.taskId = task.id;
 
       const priorityClass = { 'Wysoki': 'p-wysoki', 'Średni': 'p-sredni', 'Niski': 'p-niski' }[task.priority] || 'p-niski';
       const assignees = Array.isArray(task.assignees) ? task.assignees : [];
@@ -1474,6 +1570,8 @@ function renderBoard() {
       openTaskSidebar(taskRef.key);
     });
   });
+
+  initBoardDragAndDrop();
 }
 
 function populateColumns(task) {
