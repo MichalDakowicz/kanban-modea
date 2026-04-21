@@ -21,6 +21,8 @@
     --accent:   #c8f542;
     --accent-d: #a8d42a;
     --blue:     #378ADD;
+    --green:    #1d9e75;
+    --orange:   #d99a2b;
     --r:        8px;
   }
 
@@ -266,26 +268,37 @@
     flex-shrink: 0;
   }
 
-  .checklist-preview {
-    margin-top: 7px;
-    display: flex;
-    flex-direction: column;
-    gap: 4px;
-  }
-  .cl-row {
+  .checklist-stats {
+    margin-top: 8px;
     display: flex;
     align-items: center;
-    gap: 5px;
-    font-size: 11px;
-    color: var(--muted);
+    gap: 6px;
+    flex-wrap: wrap;
   }
-  .cl-box {
-    width: 11px; height: 11px;
-    border: 1px solid #3a3a3a;
-    border-radius: 3px; flex-shrink: 0;
+  .cl-stat {
+    font-size: 10px;
+    padding: 2px 7px;
+    border-radius: 10px;
+    border: 1px solid transparent;
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
   }
-  .cl-box.done { background: #1d9e75; border-color: #1d9e75; }
-  .cl-text.done { text-decoration: line-through; }
+  .cl-stat.todo {
+    color: #9a9a9a;
+    border-color: #3a3a3a;
+    background: #1d1d1d;
+  }
+  .cl-stat.doing {
+    color: #e4b861;
+    border-color: #7a5a22;
+    background: #2b2213;
+  }
+  .cl-stat.done {
+    color: #9be2cf;
+    border-color: #2f7d67;
+    background: #17251f;
+  }
 
   .add-card {
     font-size: 12px;
@@ -595,8 +608,18 @@
     cursor: pointer;
     display: flex; align-items: center; justify-content: center;
     transition: background .15s, border-color .15s;
+    background: transparent;
+    padding: 0;
+    outline: none;
   }
+  .cl-check:focus-visible { box-shadow: 0 0 0 2px rgba(200, 245, 66, .35); }
   .cl-check.done { background: var(--green); border-color: var(--green); }
+  .cl-check.doing { background: var(--orange); border-color: var(--orange); }
+  .cl-check.doing::after {
+    content: '';
+    width: 7px;
+    border-top: 1.5px solid #fff;
+  }
   .cl-check.done::after {
     content: '';
     width: 6px; height: 4px;
@@ -615,6 +638,7 @@
     outline: none;
     padding: 0;
   }
+  .cl-text-input.doing { color: #d6c6a3; }
   .cl-text-input.done { text-decoration: line-through; color: var(--muted); }
 
   .cl-delete {
@@ -1042,6 +1066,21 @@ function normalizeTaskAudiences(task) {
   return [...new Set(normalized)];
 }
 
+function getChecklistItemStatus(item) {
+  if (item && (item.status === 'todo' || item.status === 'doing' || item.status === 'done')) {
+    return item.status;
+  }
+  return item && item.done ? 'done' : 'todo';
+}
+
+function normalizeChecklist(checklist) {
+  if (!Array.isArray(checklist)) return [];
+  return checklist.map(item => ({
+    text: String(item?.text || ''),
+    status: getChecklistItemStatus(item)
+  }));
+}
+
 function taskMatchesAudienceFilter(task) {
   if (activeAudienceFilter === 'Wszystkie') return true;
   const audiences = normalizeTaskAudiences(task);
@@ -1192,20 +1231,20 @@ function renderBoard() {
       const priorityClass = { 'Wysoki': 'p-wysoki', 'Średni': 'p-sredni', 'Niski': 'p-niski' }[task.priority] || 'p-niski';
       const assignees = Array.isArray(task.assignees) ? task.assignees : [];
       const audiences = normalizeTaskAudiences(task);
-      const checklist = task.checklist || [];
-      const doneCount = checklist.filter(c => c.done).length;
+      const checklist = normalizeChecklist(task.checklist);
+      const doneCount = checklist.filter(c => c.status === 'done').length;
+      const doingCount = checklist.filter(c => c.status === 'doing').length;
+      const todoCount = checklist.length - doneCount - doingCount;
 
-      let checklistHTML = '';
+      let checklistStatsHTML = '';
       if (checklist.length > 0) {
-        checklistHTML = `<div class="checklist-preview">`;
-        checklist.slice(0,3).forEach(c => {
-          checklistHTML += `<div class="cl-row">
-            <div class="cl-box${c.done ? ' done' : ''}"></div>
-            <span class="cl-text${c.done ? ' done' : ''}">${c.text}</span>
-          </div>`;
-        });
-        if (checklist.length > 3) checklistHTML += `<div class="cl-row" style="color:#3a3a3a">+${checklist.length - 3} więcej</div>`;
-        checklistHTML += `</div>`;
+        checklistStatsHTML = `
+          <div class="checklist-stats">
+            <span class="cl-stat todo">○ ${todoCount}</span>
+            <span class="cl-stat doing">− ${doingCount}</span>
+            <span class="cl-stat done">✓ ${doneCount}</span>
+          </div>
+        `;
       }
 
       card.innerHTML = `
@@ -1216,7 +1255,7 @@ function renderBoard() {
           ${assignees.map(id => `<div class="av-sm" style="background:${getMemberColor(id)}22;color:${getMemberColor(id)}">${getMemberInitials(id)}</div>`).join('')}
           ${checklist.length > 0 ? `<span style="font-size:11px;color:var(--muted);margin-left:auto">${doneCount}/${checklist.length}</span>` : ''}
         </div>
-        ${checklistHTML}
+        ${checklistStatsHTML}
       `;
 
       card.addEventListener('click', () => {
@@ -1319,8 +1358,8 @@ function renderAssignees(task) {
 }
 
 function updateProgress(task) {
-  const cl = task.checklist || [];
-  const done = cl.filter(c => c.done).length;
+  const cl = normalizeChecklist(task.checklist);
+  const done = cl.filter(c => c.status === 'done').length;
   const wrap = document.getElementById('progress-wrap');
   const text = document.getElementById('progress-text');
   const fill = document.getElementById('progress-fill');
@@ -1329,7 +1368,7 @@ function updateProgress(task) {
     return;
   }
   wrap.style.display = 'block';
-  text.textContent = `${done} / ${cl.length} punktów`;
+  text.textContent = `${done} / ${cl.length} punktów ukończonych`;
   fill.style.width = `${Math.round((done / cl.length) * 100)}%`;
 }
 
@@ -1337,15 +1376,26 @@ function renderChecklist(task) {
   const el = document.getElementById('checklist');
   el.innerHTML = '';
 
-  (task.checklist || []).forEach((item, i) => {
+  const checklist = normalizeChecklist(task.checklist);
+
+  checklist.forEach((item, i) => {
     const row = document.createElement('div');
     row.className = 'cl-item';
 
-    const check = document.createElement('div');
-    check.className = 'cl-check' + (item.done ? ' done' : '');
+    const check = document.createElement('button');
+    check.type = 'button';
+    check.className = `cl-check ${item.status}`;
+    const nextLabel = item.status === 'todo'
+      ? 'Ustaw status: w trakcie'
+      : item.status === 'doing'
+        ? 'Ustaw status: zakończone'
+        : 'Ustaw status: niezaczęte';
+    check.setAttribute('aria-label', nextLabel);
     check.addEventListener('click', () => {
       if (!selectedTaskId || !allTasks[selectedTaskId]) return;
-      allTasks[selectedTaskId].checklist[i].done = !allTasks[selectedTaskId].checklist[i].done;
+      const current = getChecklistItemStatus(allTasks[selectedTaskId].checklist[i]);
+      const next = current === 'todo' ? 'doing' : current === 'doing' ? 'done' : 'todo';
+      allTasks[selectedTaskId].checklist[i].status = next;
       update(getTaskRef(), { checklist: allTasks[selectedTaskId].checklist });
       renderChecklist(allTasks[selectedTaskId]);
       updateProgress(allTasks[selectedTaskId]);
@@ -1354,18 +1404,29 @@ function renderChecklist(task) {
 
     const input = document.createElement('input');
     input.type = 'text';
-    input.className = 'cl-text-input' + (item.done ? ' done' : '');
+    input.className = `cl-text-input ${item.status}`;
     input.value = item.text;
     input.addEventListener('input', () => {
       if (!selectedTaskId || !allTasks[selectedTaskId]) return;
       allTasks[selectedTaskId].checklist[i].text = input.value;
       scheduleSaveTask({ checklist: allTasks[selectedTaskId].checklist });
+      renderBoard();
+    });
+    input.addEventListener('blur', () => {
+      if (!selectedTaskId || !allTasks[selectedTaskId]) return;
+      const normalized = input.value.trim();
+      if (input.value !== normalized) input.value = normalized;
+      if (allTasks[selectedTaskId].checklist[i].text !== normalized) {
+        allTasks[selectedTaskId].checklist[i].text = normalized;
+        update(getTaskRef(), { checklist: allTasks[selectedTaskId].checklist });
+        renderBoard();
+      }
     });
     input.addEventListener('keydown', e => {
       if (!selectedTaskId || !allTasks[selectedTaskId]) return;
       if (e.key === 'Enter') {
         e.preventDefault();
-        allTasks[selectedTaskId].checklist.splice(i + 1, 0, { text: '', done: false });
+        allTasks[selectedTaskId].checklist.splice(i + 1, 0, { text: '', status: 'todo' });
         update(getTaskRef(), { checklist: allTasks[selectedTaskId].checklist });
         renderChecklist(allTasks[selectedTaskId]);
         updateProgress(allTasks[selectedTaskId]);
@@ -1418,7 +1479,7 @@ function renderTaskSidebar() {
     return;
   }
 
-  if (!Array.isArray(task.checklist)) task.checklist = [];
+  task.checklist = normalizeChecklist(task.checklist);
   if (!Array.isArray(task.assignees)) task.assignees = [];
   if (!Array.isArray(task.audiences)) task.audiences = [];
 
@@ -1524,7 +1585,7 @@ document.getElementById('sel-section').addEventListener('change', e => {
 
 document.getElementById('btn-add-cl').addEventListener('click', () => {
   if (!selectedTaskId || !allTasks[selectedTaskId]) return;
-  allTasks[selectedTaskId].checklist.push({ text: '', done: false });
+  allTasks[selectedTaskId].checklist.push({ text: '', status: 'todo' });
   update(getTaskRef(), { checklist: allTasks[selectedTaskId].checklist });
   renderChecklist(allTasks[selectedTaskId]);
   const inputs = document.querySelectorAll('.cl-text-input');
