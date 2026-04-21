@@ -376,6 +376,72 @@
     pointer-events: none;
   }
 
+  .task-desc-preview {
+    margin-top: 10px;
+    font-size: 13px;
+    color: var(--text);
+    background: #1a1a1a;
+    border: 1px solid var(--border);
+    border-radius: var(--r);
+    padding: 10px;
+    line-height: 1.6;
+    white-space: normal;
+    word-break: break-word;
+  }
+  .task-desc-preview:empty::before {
+    content: 'Podgląd markdown pojawi się tutaj';
+    color: var(--muted);
+  }
+  .task-desc-preview h1,
+  .task-desc-preview h2,
+  .task-desc-preview h3,
+  .task-desc-preview h4 {
+    margin: 10px 0 6px;
+    line-height: 1.35;
+  }
+  .task-desc-preview h1 { font-size: 18px; }
+  .task-desc-preview h2 { font-size: 16px; }
+  .task-desc-preview h3 { font-size: 14px; }
+  .task-desc-preview h4 { font-size: 13px; }
+  .task-desc-preview p { margin: 0 0 8px; }
+  .task-desc-preview ul,
+  .task-desc-preview ol {
+    margin: 0 0 8px 18px;
+  }
+  .task-desc-preview li { margin: 2px 0; }
+  .task-desc-preview blockquote {
+    margin: 0 0 8px;
+    padding-left: 10px;
+    border-left: 2px solid var(--border-h);
+    color: #bcbcbc;
+  }
+  .task-desc-preview pre {
+    margin: 0 0 8px;
+    padding: 8px;
+    background: #101010;
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    overflow-x: auto;
+  }
+  .task-desc-preview code {
+    font-family: 'DM Mono', monospace;
+    font-size: 12px;
+    background: #111;
+    border: 1px solid var(--border);
+    border-radius: 5px;
+    padding: 1px 4px;
+  }
+  .task-desc-preview pre code {
+    background: transparent;
+    border: none;
+    padding: 0;
+  }
+  .task-desc-preview a {
+    color: var(--blue);
+    text-decoration: none;
+  }
+  .task-desc-preview a:hover { text-decoration: underline; }
+
   .meta-grid {
     margin-top: 14px;
     display: grid;
@@ -660,6 +726,7 @@
         data-placeholder="Dodaj opis zadania..."
         spellcheck="false"
       ></div>
+      <div class="task-desc-preview" id="task-desc-preview"></div>
 
       <div class="meta-grid">
         <div class="meta-block">
@@ -736,6 +803,163 @@ let sections      = [];
 let allTasks      = {};
 let selectedTaskId = null;
 let saveTimer = null;
+
+function escapeHtml(str) {
+  return String(str || '')
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
+
+function sanitizeHref(href) {
+  const trimmed = (href || '').trim();
+  if (!trimmed) return '#';
+  if (/^(https?:|mailto:|\/|#)/i.test(trimmed)) return trimmed;
+  return '#';
+}
+
+function parseInlineMarkdown(text) {
+  let html = escapeHtml(text);
+  html = html.replace(/`([^`]+)`/g, '<code>$1</code>');
+  html = html.replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>');
+  html = html.replace(/\*([^*]+)\*/g, '<em>$1</em>');
+  html = html.replace(/\[([^\]]+)\]\(([^)]+)\)/g, (_, label, href) => {
+    const safeHref = sanitizeHref(href);
+    return `<a href="${safeHref}" target="_blank" rel="noopener noreferrer">${label}</a>`;
+  });
+  return html;
+}
+
+function renderMarkdown(markdown) {
+  const lines = String(markdown || '').replace(/\r\n/g, '\n').split('\n');
+  const out = [];
+  let i = 0;
+
+  while (i < lines.length) {
+    const line = lines[i];
+
+    const fenceMatch = line.match(/^\s*(```|~~~)(.*)$/);
+    if (fenceMatch) {
+      const fence = fenceMatch[1];
+      const sameLine = line.match(/^\s*(```|~~~)([^\n]*?)\1\s*$/);
+      if (sameLine) {
+        out.push(`<pre><code>${escapeHtml(sameLine[2].trim())}</code></pre>`);
+        i += 1;
+        continue;
+      }
+
+      const code = [];
+      i += 1;
+      while (i < lines.length && !new RegExp(`^\\s*${fence}\\s*$`).test(lines[i])) {
+        code.push(lines[i]);
+        i += 1;
+      }
+      out.push(`<pre><code>${escapeHtml(code.join('\n'))}</code></pre>`);
+      if (i < lines.length) i += 1;
+      continue;
+    }
+
+    if (/^\s*$/.test(line)) {
+      i += 1;
+      continue;
+    }
+
+    const heading = line.match(/^(#{1,4})\s+(.+)$/);
+    if (heading) {
+      const level = heading[1].length;
+      out.push(`<h${level}>${parseInlineMarkdown(heading[2])}</h${level}>`);
+      i += 1;
+      continue;
+    }
+
+    if (/^\s*>\s?/.test(line)) {
+      const quoteLines = [];
+      while (i < lines.length && /^\s*>\s?/.test(lines[i])) {
+        quoteLines.push(lines[i].replace(/^\s*>\s?/, ''));
+        i += 1;
+      }
+      out.push(`<blockquote>${parseInlineMarkdown(quoteLines.join(' '))}</blockquote>`);
+      continue;
+    }
+
+    if (/^\s*[-*+]\s+/.test(line)) {
+      const items = [];
+      while (i < lines.length && /^\s*[-*+]\s+/.test(lines[i])) {
+        items.push(parseInlineMarkdown(lines[i].replace(/^\s*[-*+]\s+/, '')));
+        i += 1;
+      }
+      out.push(`<ul>${items.map(item => `<li>${item}</li>`).join('')}</ul>`);
+      continue;
+    }
+
+    if (/^\s*\d+\.\s+/.test(line)) {
+      const items = [];
+      while (i < lines.length && /^\s*\d+\.\s+/.test(lines[i])) {
+        items.push(parseInlineMarkdown(lines[i].replace(/^\s*\d+\.\s+/, '')));
+        i += 1;
+      }
+      out.push(`<ol>${items.map(item => `<li>${item}</li>`).join('')}</ol>`);
+      continue;
+    }
+
+    const paragraph = [line];
+    i += 1;
+    while (
+      i < lines.length &&
+      !/^\s*$/.test(lines[i]) &&
+      !/^\s*```/.test(lines[i]) &&
+      !/^(#{1,4})\s+/.test(lines[i]) &&
+      !/^\s*>\s?/.test(lines[i]) &&
+      !/^\s*[-*+]\s+/.test(lines[i]) &&
+      !/^\s*\d+\.\s+/.test(lines[i])
+    ) {
+      paragraph.push(lines[i]);
+      i += 1;
+    }
+    out.push(`<p>${parseInlineMarkdown(paragraph.join(' '))}</p>`);
+  }
+
+  return out.join('');
+}
+
+function updateDescriptionPreview(markdown) {
+  const previewEl = document.getElementById('task-desc-preview');
+  previewEl.innerHTML = renderMarkdown(markdown || '');
+}
+
+function insertPlainTextAtCursor(text) {
+  const selection = window.getSelection();
+  if (!selection || selection.rangeCount === 0) return;
+  const range = selection.getRangeAt(0);
+  range.deleteContents();
+  const node = document.createTextNode(text);
+  range.insertNode(node);
+  range.setStartAfter(node);
+  range.collapse(true);
+  selection.removeAllRanges();
+  selection.addRange(range);
+}
+
+function handlePlainTextPaste(event) {
+  const text = (event.clipboardData || window.clipboardData).getData('text/plain');
+  if (typeof text !== 'string') return;
+
+  event.preventDefault();
+
+  const target = event.target;
+  if (target instanceof HTMLInputElement || target instanceof HTMLTextAreaElement) {
+    const start = target.selectionStart ?? target.value.length;
+    const end = target.selectionEnd ?? target.value.length;
+    target.setRangeText(text, start, end, 'end');
+    target.dispatchEvent(new Event('input', { bubbles: true }));
+    return;
+  }
+
+  insertPlainTextAtCursor(text);
+  target.dispatchEvent(new Event('input', { bubbles: true }));
+}
 
 function getTaskRef(id = selectedTaskId) {
   return ref(db, `tasks/${id}`);
@@ -1034,9 +1258,12 @@ function renderTaskSidebar() {
 
   const titleEl = document.getElementById('task-title');
   const descEl = document.getElementById('task-desc');
+  const isEditingTitle = document.activeElement === titleEl;
+  const isEditingDesc = document.activeElement === descEl;
 
-  if (titleEl.textContent !== (task.title || '')) titleEl.textContent = task.title || '';
-  if (descEl.textContent !== (task.description || '')) descEl.textContent = task.description || '';
+  if (!isEditingTitle && titleEl.textContent !== (task.title || '')) titleEl.textContent = task.title || '';
+  if (!isEditingDesc && descEl.textContent !== (task.description || '')) descEl.textContent = task.description || '';
+  updateDescriptionPreview(task.description || '');
 
   document.getElementById('sel-priority').value = task.priority || 'Niski';
 
@@ -1069,11 +1296,22 @@ document.getElementById('btn-new').addEventListener('click', () => {
 document.getElementById('btn-close-task').addEventListener('click', closeTaskSidebar);
 
 const taskTitleEl = document.getElementById('task-title');
+taskTitleEl.addEventListener('paste', handlePlainTextPaste);
 taskTitleEl.addEventListener('input', () => {
   if (!selectedTaskId || !allTasks[selectedTaskId]) return;
   allTasks[selectedTaskId].title = taskTitleEl.textContent.trim();
   scheduleSaveTask({ title: allTasks[selectedTaskId].title });
   renderBoard();
+});
+taskTitleEl.addEventListener('blur', () => {
+  if (!selectedTaskId || !allTasks[selectedTaskId]) return;
+  const normalized = taskTitleEl.textContent.trim();
+  if (taskTitleEl.textContent !== normalized) taskTitleEl.textContent = normalized;
+  if (allTasks[selectedTaskId].title !== normalized) {
+    allTasks[selectedTaskId].title = normalized;
+    update(getTaskRef(), { title: normalized });
+    renderBoard();
+  }
 });
 taskTitleEl.addEventListener('keydown', e => {
   if (e.key === 'Enter') {
@@ -1083,10 +1321,12 @@ taskTitleEl.addEventListener('keydown', e => {
 });
 
 const taskDescEl = document.getElementById('task-desc');
+taskDescEl.addEventListener('paste', handlePlainTextPaste);
 taskDescEl.addEventListener('input', () => {
   if (!selectedTaskId || !allTasks[selectedTaskId]) return;
   allTasks[selectedTaskId].description = taskDescEl.textContent;
   scheduleSaveTask({ description: allTasks[selectedTaskId].description });
+  updateDescriptionPreview(allTasks[selectedTaskId].description);
 });
 
 document.getElementById('sel-column').addEventListener('change', e => {
