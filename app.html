@@ -668,6 +668,139 @@
   }
   .btn-add-cl:hover { color: var(--text); }
 
+  .stack-list {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+  }
+
+  .comment-item,
+  .issue-item {
+    background: #1a1a1a;
+    border: 1px solid var(--border);
+    border-radius: var(--r);
+    padding: 9px 10px;
+  }
+
+  .comment-head,
+  .issue-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    margin-bottom: 6px;
+  }
+
+  .comment-author,
+  .issue-title {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 12px;
+    color: #cfcfcf;
+  }
+
+  .comment-avatar {
+    width: 18px;
+    height: 18px;
+    border-radius: 50%;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 9px;
+    font-weight: 500;
+    flex-shrink: 0;
+  }
+
+  .comment-time,
+  .issue-time {
+    font-size: 11px;
+    color: var(--muted);
+  }
+
+  .comment-text,
+  .issue-text {
+    font-size: 13px;
+    line-height: 1.55;
+    color: var(--text);
+    white-space: pre-wrap;
+    word-break: break-word;
+  }
+
+  .issue-status {
+    font-size: 10px;
+    border-radius: 999px;
+    padding: 2px 8px;
+    border: 1px solid transparent;
+  }
+  .issue-status.open {
+    color: #f1b05f;
+    border-color: #7a5a22;
+    background: #2b2213;
+  }
+  .issue-status.resolved {
+    color: #9be2cf;
+    border-color: #2f7d67;
+    background: #17251f;
+  }
+
+  .inline-input-row {
+    margin-top: 8px;
+    display: flex;
+    gap: 8px;
+  }
+
+  .inline-input {
+    flex: 1;
+    background: #1a1a1a;
+    border: 1px solid var(--border);
+    border-radius: var(--r);
+    color: var(--text);
+    font-family: 'DM Sans', sans-serif;
+    font-size: 13px;
+    padding: 8px 10px;
+    outline: none;
+    transition: border-color .15s;
+  }
+  .inline-input:focus { border-color: var(--border-h); }
+
+  .btn-inline-add,
+  .btn-inline-ghost {
+    background: transparent;
+    border: 1px solid var(--border-h);
+    border-radius: var(--r);
+    color: var(--muted);
+    font-family: 'DM Sans', sans-serif;
+    font-size: 12px;
+    padding: 7px 10px;
+    cursor: pointer;
+    transition: color .15s, background .15s;
+  }
+  .btn-inline-add:hover,
+  .btn-inline-ghost:hover {
+    color: var(--text);
+    background: #212121;
+  }
+
+  .btn-inline-danger {
+    background: transparent;
+    border: 1px solid #ff555544;
+    border-radius: var(--r);
+    color: #ff7a7a;
+    font-family: 'DM Sans', sans-serif;
+    font-size: 12px;
+    padding: 6px 9px;
+    cursor: pointer;
+    transition: background .15s;
+  }
+  .btn-inline-danger:hover { background: #ff555511; }
+
+  .empty-mini {
+    font-size: 12px;
+    color: var(--muted);
+    padding: 6px 0;
+  }
+
   .created-info {
     font-size: 11px;
     color: var(--muted);
@@ -852,6 +985,20 @@
       <div class="checklist" id="checklist"></div>
       <button class="btn-add-cl" id="btn-add-cl">+ dodaj punkt</button>
 
+      <div class="section-label">Komentarze</div>
+      <div class="stack-list" id="comments-list"></div>
+      <div class="inline-input-row">
+        <input type="text" class="inline-input" id="comment-input" placeholder="Dodaj komentarz...">
+        <button class="btn-inline-add" id="btn-add-comment">Dodaj</button>
+      </div>
+
+      <div class="section-label">Problemy</div>
+      <div class="stack-list" id="issues-list"></div>
+      <div class="inline-input-row">
+        <input type="text" class="inline-input" id="issue-input" placeholder="Dodaj problem / blocker...">
+        <button class="btn-inline-add" id="btn-add-issue">Dodaj</button>
+      </div>
+
       <div class="created-info" id="created-info"></div>
 
       <button class="btn-delete" id="btn-delete">Usuń zadanie</button>
@@ -892,6 +1039,8 @@ let activeSection = null;
 let sections      = [];
 let allTasks      = {};
 let selectedTaskId = null;
+let commentDraft = '';
+let issueDraft = '';
 let saveTimer = null;
 const FALLBACK_PAGE_TYPE = ['Uczeń', 'Nauczyciel', 'Rodzic', 'Administracja'];
 const PAGE_TYPE = Array.isArray(window.PAGE_TYPE) && window.PAGE_TYPE.length
@@ -1081,6 +1230,38 @@ function normalizeChecklist(checklist) {
   }));
 }
 
+function normalizeComments(comments) {
+  if (!Array.isArray(comments)) return [];
+  return comments.map((comment, i) => ({
+    id: String(comment?.id || `${comment?.createdAt || 'c'}_${i}`),
+    text: String(comment?.text || ''),
+    createdAt: Number(comment?.createdAt || 0),
+    createdBy: String(comment?.createdBy || '')
+  }));
+}
+
+function normalizeIssues(issues) {
+  if (!Array.isArray(issues)) return [];
+  return issues.map((issue, i) => ({
+    id: String(issue?.id || `${issue?.createdAt || 'i'}_${i}`),
+    text: String(issue?.text || ''),
+    status: issue?.status === 'resolved' ? 'resolved' : 'open',
+    createdAt: Number(issue?.createdAt || 0),
+    createdBy: String(issue?.createdBy || '')
+  }));
+}
+
+function formatDateTime(ts) {
+  if (!ts) return '';
+  const date = new Date(ts);
+  return date.toLocaleString('pl-PL', {
+    day: '2-digit',
+    month: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit'
+  });
+}
+
 function taskMatchesAudienceFilter(task) {
   if (activeAudienceFilter === 'Wszystkie') return true;
   const audiences = normalizeTaskAudiences(task);
@@ -1105,6 +1286,7 @@ function isEditingTaskSidebar() {
   if (!active) return false;
   if (active.id === 'task-title' || active.id === 'task-desc') return true;
   if (active instanceof HTMLInputElement && active.classList.contains('cl-text-input')) return true;
+  if (active.id === 'comment-input' || active.id === 'issue-input') return true;
   return false;
 }
 
@@ -1133,12 +1315,16 @@ function mergeEditingDraftIntoIncomingTasks(incomingTasks) {
 function openTaskSidebar(id) {
   if (!id || !allTasks[id]) return;
   selectedTaskId = id;
+  commentDraft = '';
+  issueDraft = '';
   renderBoard();
   renderTaskSidebar();
 }
 
 function closeTaskSidebar() {
   selectedTaskId = null;
+  commentDraft = '';
+  issueDraft = '';
   renderBoard();
   renderTaskSidebar();
 }
@@ -1235,6 +1421,8 @@ function renderBoard() {
       const doneCount = checklist.filter(c => c.status === 'done').length;
       const doingCount = checklist.filter(c => c.status === 'doing').length;
       const todoCount = checklist.length - doneCount - doingCount;
+      const commentsCount = normalizeComments(task.comments).length;
+      const openIssuesCount = normalizeIssues(task.issues).filter(issue => issue.status === 'open').length;
 
       let checklistStatsHTML = '';
       if (checklist.length > 0) {
@@ -1253,6 +1441,8 @@ function renderBoard() {
           ${task.priority ? `<span class="badge ${priorityClass}">${task.priority}</span>` : ''}
           ${audiences.map(name => `<span class="tag-badge">${name}</span>`).join('')}
           ${assignees.map(id => `<div class="av-sm" style="background:${getMemberColor(id)}22;color:${getMemberColor(id)}">${getMemberInitials(id)}</div>`).join('')}
+          ${commentsCount > 0 ? `<span class="tag-badge">K: ${commentsCount}</span>` : ''}
+          ${openIssuesCount > 0 ? `<span class="tag-badge">P: ${openIssuesCount}</span>` : ''}
           ${checklist.length > 0 ? `<span style="font-size:11px;color:var(--muted);margin-left:auto">${doneCount}/${checklist.length}</span>` : ''}
         </div>
         ${checklistStatsHTML}
@@ -1275,6 +1465,8 @@ function renderBoard() {
         audiences: [],
         assignees: [user.id],
         checklist: [],
+        comments: [],
+        issues: [],
         createdAt: Date.now(),
         createdBy: user.id
       };
@@ -1370,6 +1562,148 @@ function updateProgress(task) {
   wrap.style.display = 'block';
   text.textContent = `${done} / ${cl.length} punktów ukończonych`;
   fill.style.width = `${Math.round((done / cl.length) * 100)}%`;
+}
+
+function renderComments(task) {
+  const list = document.getElementById('comments-list');
+  list.innerHTML = '';
+
+  const comments = normalizeComments(task.comments);
+  if (comments.length === 0) {
+    const empty = document.createElement('div');
+    empty.className = 'empty-mini';
+    empty.textContent = 'Brak komentarzy.';
+    list.appendChild(empty);
+    return;
+  }
+
+  comments.forEach((comment, i) => {
+    const author = TEAM_MEMBERS.find(m => m.id === comment.createdBy);
+    const item = document.createElement('div');
+    item.className = 'comment-item';
+
+    const head = document.createElement('div');
+    head.className = 'comment-head';
+
+    const left = document.createElement('div');
+    left.className = 'comment-author';
+
+    const avatar = document.createElement('span');
+    avatar.className = 'comment-avatar';
+    avatar.style.cssText = `background:${getMemberColor(comment.createdBy)}22;color:${getMemberColor(comment.createdBy)}`;
+    avatar.textContent = getMemberInitials(comment.createdBy);
+
+    const authorName = document.createElement('span');
+    authorName.textContent = author ? author.name : 'Nieznany użytkownik';
+
+    left.append(avatar, authorName);
+
+    const right = document.createElement('div');
+    right.style.display = 'flex';
+    right.style.alignItems = 'center';
+    right.style.gap = '6px';
+
+    const time = document.createElement('span');
+    time.className = 'comment-time';
+    time.textContent = formatDateTime(comment.createdAt);
+
+    const del = document.createElement('button');
+    del.className = 'btn-inline-danger';
+    del.type = 'button';
+    del.textContent = 'Usuń';
+    del.addEventListener('click', () => {
+      if (!selectedTaskId || !allTasks[selectedTaskId]) return;
+      allTasks[selectedTaskId].comments.splice(i, 1);
+      update(getTaskRef(), { comments: allTasks[selectedTaskId].comments });
+      renderComments(allTasks[selectedTaskId]);
+      renderBoard();
+    });
+
+    right.append(time, del);
+    head.append(left, right);
+
+    const text = document.createElement('div');
+    text.className = 'comment-text';
+    text.textContent = comment.text;
+
+    item.append(head, text);
+    list.appendChild(item);
+  });
+}
+
+function renderIssues(task) {
+  const list = document.getElementById('issues-list');
+  list.innerHTML = '';
+
+  const issues = normalizeIssues(task.issues);
+  if (issues.length === 0) {
+    const empty = document.createElement('div');
+    empty.className = 'empty-mini';
+    empty.textContent = 'Brak zgłoszonych problemów.';
+    list.appendChild(empty);
+    return;
+  }
+
+  issues.forEach((issue, i) => {
+    const item = document.createElement('div');
+    item.className = 'issue-item';
+
+    const head = document.createElement('div');
+    head.className = 'issue-head';
+
+    const left = document.createElement('div');
+    left.className = 'issue-title';
+
+    const status = document.createElement('span');
+    status.className = `issue-status ${issue.status}`;
+    status.textContent = issue.status === 'resolved' ? 'rozwiązany' : 'otwarty';
+
+    const time = document.createElement('span');
+    time.className = 'issue-time';
+    time.textContent = formatDateTime(issue.createdAt);
+
+    left.append(status, time);
+
+    const right = document.createElement('div');
+    right.style.display = 'flex';
+    right.style.alignItems = 'center';
+    right.style.gap = '6px';
+
+    const toggle = document.createElement('button');
+    toggle.className = 'btn-inline-ghost';
+    toggle.type = 'button';
+    toggle.textContent = issue.status === 'resolved' ? 'Otwórz' : 'Rozwiąż';
+    toggle.addEventListener('click', () => {
+      if (!selectedTaskId || !allTasks[selectedTaskId]) return;
+      const current = allTasks[selectedTaskId].issues[i]?.status === 'resolved' ? 'resolved' : 'open';
+      allTasks[selectedTaskId].issues[i].status = current === 'open' ? 'resolved' : 'open';
+      update(getTaskRef(), { issues: allTasks[selectedTaskId].issues });
+      renderIssues(allTasks[selectedTaskId]);
+      renderBoard();
+    });
+
+    const del = document.createElement('button');
+    del.className = 'btn-inline-danger';
+    del.type = 'button';
+    del.textContent = 'Usuń';
+    del.addEventListener('click', () => {
+      if (!selectedTaskId || !allTasks[selectedTaskId]) return;
+      allTasks[selectedTaskId].issues.splice(i, 1);
+      update(getTaskRef(), { issues: allTasks[selectedTaskId].issues });
+      renderIssues(allTasks[selectedTaskId]);
+      renderBoard();
+    });
+
+    right.append(toggle, del);
+    head.append(left, right);
+
+    const text = document.createElement('div');
+    text.className = 'issue-text';
+    text.textContent = issue.text;
+
+    item.append(head, text);
+    list.appendChild(item);
+  });
 }
 
 function renderChecklist(task) {
@@ -1482,6 +1816,8 @@ function renderTaskSidebar() {
   task.checklist = normalizeChecklist(task.checklist);
   if (!Array.isArray(task.assignees)) task.assignees = [];
   if (!Array.isArray(task.audiences)) task.audiences = [];
+  task.comments = normalizeComments(task.comments);
+  task.issues = normalizeIssues(task.issues);
 
   emptyEl.style.display = 'none';
   contentEl.classList.add('open');
@@ -1502,6 +1838,13 @@ function renderTaskSidebar() {
   renderAudienceTags(task);
   renderAssignees(task);
   renderChecklist(task);
+  renderComments(task);
+  renderIssues(task);
+
+  const commentInput = document.getElementById('comment-input');
+  const issueInput = document.getElementById('issue-input');
+  if (document.activeElement !== commentInput) commentInput.value = commentDraft;
+  if (document.activeElement !== issueInput) issueInput.value = issueDraft;
 
   const creator = TEAM_MEMBERS.find(m => m.id === task.createdBy);
   document.getElementById('created-info').innerHTML =
@@ -1518,6 +1861,8 @@ document.getElementById('btn-new').addEventListener('click', () => {
     audiences: [],
     assignees: [user.id],
     checklist: [],
+    comments: [],
+    issues: [],
     createdAt: Date.now(),
     createdBy: user.id
   };
@@ -1591,6 +1936,71 @@ document.getElementById('btn-add-cl').addEventListener('click', () => {
   const inputs = document.querySelectorAll('.cl-text-input');
   if (inputs.length) inputs[inputs.length - 1].focus();
   renderBoard();
+});
+
+const commentInputEl = document.getElementById('comment-input');
+const issueInputEl = document.getElementById('issue-input');
+
+commentInputEl.addEventListener('input', () => {
+  commentDraft = commentInputEl.value;
+});
+
+issueInputEl.addEventListener('input', () => {
+  issueDraft = issueInputEl.value;
+});
+
+function addCommentToTask() {
+  if (!selectedTaskId || !allTasks[selectedTaskId]) return;
+  const text = commentInputEl.value.trim();
+  if (!text) return;
+  allTasks[selectedTaskId].comments = normalizeComments(allTasks[selectedTaskId].comments);
+  allTasks[selectedTaskId].comments.push({
+    id: `${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
+    text,
+    createdAt: Date.now(),
+    createdBy: user.id
+  });
+  commentDraft = '';
+  commentInputEl.value = '';
+  update(getTaskRef(), { comments: allTasks[selectedTaskId].comments });
+  renderComments(allTasks[selectedTaskId]);
+  renderBoard();
+}
+
+function addIssueToTask() {
+  if (!selectedTaskId || !allTasks[selectedTaskId]) return;
+  const text = issueInputEl.value.trim();
+  if (!text) return;
+  allTasks[selectedTaskId].issues = normalizeIssues(allTasks[selectedTaskId].issues);
+  allTasks[selectedTaskId].issues.push({
+    id: `${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
+    text,
+    status: 'open',
+    createdAt: Date.now(),
+    createdBy: user.id
+  });
+  issueDraft = '';
+  issueInputEl.value = '';
+  update(getTaskRef(), { issues: allTasks[selectedTaskId].issues });
+  renderIssues(allTasks[selectedTaskId]);
+  renderBoard();
+}
+
+document.getElementById('btn-add-comment').addEventListener('click', addCommentToTask);
+document.getElementById('btn-add-issue').addEventListener('click', addIssueToTask);
+
+commentInputEl.addEventListener('keydown', e => {
+  if (e.key === 'Enter') {
+    e.preventDefault();
+    addCommentToTask();
+  }
+});
+
+issueInputEl.addEventListener('keydown', e => {
+  if (e.key === 'Enter') {
+    e.preventDefault();
+    addIssueToTask();
+  }
 });
 
 document.getElementById('btn-delete').addEventListener('click', () => {
