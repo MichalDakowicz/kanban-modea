@@ -52,3 +52,4 @@ const TEAM_MEMBERS = [
 
 const SECTIONS = ["Frontend", "Backend", "Mobile", "Docs"];
 const COLUMNS = ["Backlog", "Do zrobienia", "W trakcie", "Review", "Zrobione"];
+const PAGE_TYPE = ["Uczeń", "Nauczyciel", "Rodzic", "Administracja"];

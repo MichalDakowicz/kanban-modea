@@ -83,6 +83,34 @@
     margin-left: 16px;
     flex-shrink: 0;
   }
+
+  .audience-filters {
+    display: flex;
+    gap: 6px;
+    max-width: 380px;
+    overflow-x: auto;
+    padding-bottom: 1px;
+  }
+  .audience-filters::-webkit-scrollbar { height: 2px; }
+  .audience-filters::-webkit-scrollbar-thumb { background: var(--border); border-radius: 2px; }
+  .aud-chip {
+    border: 1px solid var(--border-h);
+    background: transparent;
+    color: var(--muted);
+    border-radius: 999px;
+    padding: 3px 9px;
+    font-size: 11px;
+    cursor: pointer;
+    white-space: nowrap;
+    transition: color .15s, background .15s, border-color .15s;
+    font-family: 'DM Sans', sans-serif;
+  }
+  .aud-chip:hover { color: var(--text); background: #212121; }
+  .aud-chip.active {
+    color: #0f0f0f;
+    background: var(--accent);
+    border-color: var(--accent);
+  }
   .task-count { font-size: 12px; color: var(--muted); }
   .btn-new {
     font-size: 13px;
@@ -221,6 +249,15 @@
   .p-wysoki  { background: #faece7; color: #993c1d; }
   .p-sredni  { background: #faeeda; color: #854f0b; }
   .p-niski   { background: #eaf3de; color: #3b6d11; }
+
+  .tag-badge {
+    font-size: 10px;
+    padding: 2px 7px;
+    border-radius: 10px;
+    background: #202020;
+    color: #bbbbbb;
+    border: 1px solid #2d2d2d;
+  }
 
   .av-sm {
     width: 20px; height: 20px; border-radius: 50%;
@@ -458,6 +495,29 @@
     letter-spacing: .06em;
   }
 
+  .tag-list {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+  }
+  .tag-pill {
+    border: 1px solid var(--border-h);
+    background: transparent;
+    color: var(--muted);
+    border-radius: 999px;
+    padding: 5px 9px;
+    font-size: 12px;
+    cursor: pointer;
+    transition: color .15s, background .15s, border-color .15s;
+    font-family: 'DM Sans', sans-serif;
+  }
+  .tag-pill:hover { color: var(--text); background: #212121; }
+  .tag-pill.selected {
+    background: rgba(200, 245, 66, .1);
+    border-color: var(--accent);
+    color: var(--accent);
+  }
+
   select {
     background: var(--card);
     border: 1px solid var(--border);
@@ -693,6 +753,7 @@
   <div class="logo">Modéa</div>
   <div class="tabs" id="tabs"></div>
   <div class="topbar-right">
+    <div class="audience-filters" id="audience-filters"></div>
     <span class="task-count" id="task-count"></span>
     <button class="btn-new" id="btn-new">+ Nowe zadanie</button>
     <div class="user-pill" id="user-pill" title="Zmień użytkownika">
@@ -746,6 +807,11 @@
         <div class="meta-block">
           <div class="meta-key">Sekcja</div>
           <select id="sel-section"></select>
+        </div>
+
+        <div class="meta-block">
+          <div class="meta-key">Strona</div>
+          <div class="tag-list" id="audience-tags"></div>
         </div>
 
         <div class="meta-block">
@@ -803,6 +869,11 @@ let sections      = [];
 let allTasks      = {};
 let selectedTaskId = null;
 let saveTimer = null;
+const FALLBACK_PAGE_TYPE = ['Uczeń', 'Nauczyciel', 'Rodzic', 'Administracja'];
+const PAGE_TYPE = Array.isArray(window.PAGE_TYPE) && window.PAGE_TYPE.length
+  ? window.PAGE_TYPE
+  : FALLBACK_PAGE_TYPE;
+let activeAudienceFilter = 'Wszystkie';
 
 function escapeHtml(str) {
   return String(str || '')
@@ -965,6 +1036,18 @@ function getTaskRef(id = selectedTaskId) {
   return ref(db, `tasks/${id}`);
 }
 
+function normalizeTaskAudiences(task) {
+  const source = Array.isArray(task?.audiences) ? task.audiences : [];
+  const normalized = source.filter(a => PAGE_TYPE.includes(a));
+  return [...new Set(normalized)];
+}
+
+function taskMatchesAudienceFilter(task) {
+  if (activeAudienceFilter === 'Wszystkie') return true;
+  const audiences = normalizeTaskAudiences(task);
+  return audiences.includes(activeAudienceFilter);
+}
+
 function scheduleSaveTask(patch) {
   if (!selectedTaskId) return;
   const saveId = selectedTaskId;
@@ -1012,20 +1095,41 @@ function renderTabs() {
   tabsEl.appendChild(addBtn);
 }
 
+function renderAudienceFilters() {
+  const wrap = document.getElementById('audience-filters');
+  const options = ['Wszystkie', ...PAGE_TYPE];
+  wrap.innerHTML = '';
+
+  options.forEach(option => {
+    const btn = document.createElement('button');
+    btn.className = 'aud-chip' + (option === activeAudienceFilter ? ' active' : '');
+    btn.textContent = option;
+    btn.addEventListener('click', () => {
+      activeAudienceFilter = option;
+      renderAudienceFilters();
+      renderBoard();
+      renderTaskSidebar();
+    });
+    wrap.appendChild(btn);
+  });
+}
+
 function renderBoard() {
   const board = document.getElementById('board');
   board.innerHTML = '';
 
   if (selectedTaskId) {
     const picked = allTasks[selectedTaskId];
-    if (!picked || picked.section !== activeSection) selectedTaskId = null;
+    if (!picked || picked.section !== activeSection || !taskMatchesAudienceFilter(picked)) selectedTaskId = null;
   }
 
   const sectionTasks = Object.entries(allTasks)
     .filter(([, t]) => t.section === activeSection)
+    .filter(([, t]) => taskMatchesAudienceFilter(t))
     .map(([id, t]) => ({ id, ...t }));
 
-  document.getElementById('task-count').textContent = `${activeSection} · ${sectionTasks.length} zadań`;
+  const audienceLabel = activeAudienceFilter === 'Wszystkie' ? 'wszystkie' : activeAudienceFilter;
+  document.getElementById('task-count').textContent = `${activeSection} · ${sectionTasks.length} zadań · ${audienceLabel}`;
 
   COLUMNS.forEach(col => {
     const colTasks = sectionTasks.filter(t => t.column === col);
@@ -1051,6 +1155,7 @@ function renderBoard() {
 
       const priorityClass = { 'Wysoki': 'p-wysoki', 'Średni': 'p-sredni', 'Niski': 'p-niski' }[task.priority] || 'p-niski';
       const assignees = Array.isArray(task.assignees) ? task.assignees : [];
+      const audiences = normalizeTaskAudiences(task);
       const checklist = task.checklist || [];
       const doneCount = checklist.filter(c => c.done).length;
 
@@ -1071,6 +1176,7 @@ function renderBoard() {
         <div class="card-title">${task.title}</div>
         <div class="card-meta">
           ${task.priority ? `<span class="badge ${priorityClass}">${task.priority}</span>` : ''}
+          ${audiences.map(name => `<span class="tag-badge">${name}</span>`).join('')}
           ${assignees.map(id => `<div class="av-sm" style="background:${getMemberColor(id)}22;color:${getMemberColor(id)}">${getMemberInitials(id)}</div>`).join('')}
           ${checklist.length > 0 ? `<span style="font-size:11px;color:var(--muted);margin-left:auto">${doneCount}/${checklist.length}</span>` : ''}
         </div>
@@ -1091,6 +1197,7 @@ function renderBoard() {
         column: col,
         priority: 'Niski',
         description: '',
+        audiences: [],
         assignees: [user.id],
         checklist: [],
         createdAt: Date.now(),
@@ -1123,6 +1230,31 @@ function populateSections(task) {
     opt.textContent = s;
     if (s === task.section) opt.selected = true;
     sel.appendChild(opt);
+  });
+}
+
+function renderAudienceTags(task) {
+  const el = document.getElementById('audience-tags');
+  el.innerHTML = '';
+  const selectedAudiences = normalizeTaskAudiences(task);
+
+  PAGE_TYPE.forEach(name => {
+    const selected = selectedAudiences.includes(name);
+    const btn = document.createElement('button');
+    btn.type = 'button';
+    btn.className = 'tag-pill' + (selected ? ' selected' : '');
+    btn.textContent = name;
+    btn.addEventListener('click', () => {
+      if (!selectedTaskId || !allTasks[selectedTaskId]) return;
+      let next = normalizeTaskAudiences(allTasks[selectedTaskId]);
+      if (next.includes(name)) next = next.filter(v => v !== name);
+      else next.push(name);
+      allTasks[selectedTaskId].audiences = next;
+      update(getTaskRef(), { audiences: next });
+      renderAudienceTags(allTasks[selectedTaskId]);
+      renderBoard();
+    });
+    el.appendChild(btn);
   });
 }
 
@@ -1252,6 +1384,7 @@ function renderTaskSidebar() {
 
   if (!Array.isArray(task.checklist)) task.checklist = [];
   if (!Array.isArray(task.assignees)) task.assignees = [];
+  if (!Array.isArray(task.audiences)) task.audiences = [];
 
   emptyEl.style.display = 'none';
   contentEl.classList.add('open');
@@ -1269,6 +1402,7 @@ function renderTaskSidebar() {
 
   populateColumns(task);
   populateSections(task);
+  renderAudienceTags(task);
   renderAssignees(task);
   renderChecklist(task);
 
@@ -1284,6 +1418,7 @@ document.getElementById('btn-new').addEventListener('click', () => {
     column: 'Backlog',
     priority: 'Niski',
     description: '',
+    audiences: [],
     assignees: [user.id],
     checklist: [],
     createdAt: Date.now(),
@@ -1390,6 +1525,7 @@ onValue(ref(db, 'sections'), snap => {
   sections = val || SECTIONS;
   if (!activeSection || !sections.includes(activeSection)) activeSection = sections[0];
   renderTabs();
+  renderAudienceFilters();
   renderBoard();
   renderTaskSidebar();
 });
@@ -1397,6 +1533,7 @@ onValue(ref(db, 'sections'), snap => {
 onValue(ref(db, 'tasks'), snap => {
   allTasks = snap.val() || {};
   if (selectedTaskId && !allTasks[selectedTaskId]) selectedTaskId = null;
+  renderAudienceFilters();
   renderBoard();
   renderTaskSidebar();
   document.getElementById('loading').classList.add('hide');
