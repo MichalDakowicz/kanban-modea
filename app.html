@@ -1055,6 +1055,42 @@ function scheduleSaveTask(patch) {
   saveTimer = setTimeout(() => update(getTaskRef(saveId), patch), 600);
 }
 
+function getActiveChecklistInputIndex() {
+  const active = document.activeElement;
+  if (!(active instanceof HTMLInputElement) || !active.classList.contains('cl-text-input')) return -1;
+  return Array.from(document.querySelectorAll('.cl-text-input')).indexOf(active);
+}
+
+function isEditingTaskSidebar() {
+  const active = document.activeElement;
+  if (!active) return false;
+  if (active.id === 'task-title' || active.id === 'task-desc') return true;
+  if (active instanceof HTMLInputElement && active.classList.contains('cl-text-input')) return true;
+  return false;
+}
+
+function mergeEditingDraftIntoIncomingTasks(incomingTasks) {
+  if (!selectedTaskId) return incomingTasks;
+
+  const currentLocalTask = allTasks[selectedTaskId];
+  const incomingTask = incomingTasks[selectedTaskId];
+  if (!currentLocalTask || !incomingTask) return incomingTasks;
+
+  const active = document.activeElement;
+  const mergedTask = { ...incomingTask };
+
+  if (active && active.id === 'task-title') mergedTask.title = currentLocalTask.title;
+  if (active && active.id === 'task-desc') mergedTask.description = currentLocalTask.description;
+  if (active instanceof HTMLInputElement && active.classList.contains('cl-text-input')) {
+    mergedTask.checklist = currentLocalTask.checklist;
+  }
+
+  return {
+    ...incomingTasks,
+    [selectedTaskId]: mergedTask
+  };
+}
+
 function openTaskSidebar(id) {
   if (!id || !allTasks[id]) return;
   selectedTaskId = id;
@@ -1531,11 +1567,27 @@ onValue(ref(db, 'sections'), snap => {
 });
 
 onValue(ref(db, 'tasks'), snap => {
-  allTasks = snap.val() || {};
+  const isEditing = isEditingTaskSidebar();
+  const checklistIndex = getActiveChecklistInputIndex();
+  const incomingTasks = snap.val() || {};
+
+  allTasks = isEditing ? mergeEditingDraftIntoIncomingTasks(incomingTasks) : incomingTasks;
   if (selectedTaskId && !allTasks[selectedTaskId]) selectedTaskId = null;
   renderAudienceFilters();
   renderBoard();
-  renderTaskSidebar();
+
+  if (!isEditing) {
+    renderTaskSidebar();
+  } else if (checklistIndex >= 0) {
+    const inputs = document.querySelectorAll('.cl-text-input');
+    const target = inputs[checklistIndex];
+    if (target) {
+      const cursor = target.selectionStart ?? target.value.length;
+      target.focus();
+      target.setSelectionRange(cursor, cursor);
+    }
+  }
+
   document.getElementById('loading').classList.add('hide');
 });
 </script>
